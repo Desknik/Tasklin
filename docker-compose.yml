@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  Tasklin-calendar:
+    build: .
+    container_name: Tasklin-calendar
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+    volumes:
+      # Mount a volume for persistent storage of user data
+      - calendar_data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  calendar_data:
+    driver: local

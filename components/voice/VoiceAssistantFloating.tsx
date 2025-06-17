@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Mic, MicOff, Volume2, Square, Settings } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Mic, MicOff, Volume2, Square, Settings, Loader2, MessageSquare } from 'lucide-react';
 import { useVoiceRecognition } from '@/hooks/use-voice-recognition';
 import { VoiceAgentRequest, VoiceAgentResponse, VoiceAgentCredentials, Task, CalendarEvent } from '@/types/calendar';
 import { toast } from 'sonner';
@@ -25,6 +25,11 @@ export function VoiceAssistantFloating({ onTaskCreated, onEventCreated, onRefres
   const [hasProcessedCommand, setHasProcessedCommand] = useState(false);
   const [userStoppedManually, setUserStoppedManually] = useState(false);
   const [hasAutoStarted, setHasAutoStarted] = useState(false);
+  const [showModalButton, setShowModalButton] = useState(false);
+  
+  // Para controlar o long press
+  const pressTimer = useRef<NodeJS.Timeout | null>(null);
+  const [isLongPress, setIsLongPress] = useState(false);
     const {
     isListening,
     isSupported,
@@ -184,11 +189,12 @@ export function VoiceAssistantFloating({ onTaskCreated, onEventCreated, onRefres
           label: 'Tentar Novamente',
           onClick: () => processVoiceCommand(text),
         },
-      });
-    } finally {
+      });    } finally {
       console.log('🏁 processVoiceCommand finalizado');
       setIsProcessing(false);
       resetTranscript();
+      // Esconder o botão modal após processar
+      setShowModalButton(false);
     }
   }, [onTaskCreated, onRefreshData, resetTranscript]);
 
@@ -209,9 +215,9 @@ export function VoiceAssistantFloating({ onTaskCreated, onEventCreated, onRefres
     console.log('🛑 User manually stopped listening');
     setUserStoppedManually(true);
     stopListening();
-    // Don't process here - let the useEffect handle it automatically
+    // Mostrar o botão modal após parar de gravar
+    setShowModalButton(true);
   }, [stopListening]);
-
   // Auto-process when speech ends and we have transcript
   const handleToggleListening = useCallback(() => {
     if (isListening) {
@@ -220,9 +226,48 @@ export function VoiceAssistantFloating({ onTaskCreated, onEventCreated, onRefres
       console.log('🎤 User manually started listening');
       setUserStoppedManually(false);
       setHasProcessedCommand(false);
+      setShowModalButton(false);
       handleStartListening();
     }
   }, [isListening, handleStartListening, handleStopListening]);
+
+  // Handlers para long press
+  const handleMouseDown = useCallback(() => {
+    if (!hasCredentials) {
+      toast.error('Configure o assistente de voz nas Configurações primeiro');
+      return;
+    }
+
+    setIsLongPress(false);
+    pressTimer.current = setTimeout(() => {
+      console.log('🔗 Long press detected - opening modal');
+      setIsLongPress(true);
+      setShowDialog(true);
+    }, 800); // 800ms para long press
+  }, [hasCredentials]);
+
+  const handleMouseUp = useCallback(() => {
+    if (pressTimer.current) {
+      clearTimeout(pressTimer.current);
+      pressTimer.current = null;
+    }
+
+    // Se não foi long press, toggle listening
+    if (!isLongPress && hasCredentials) {
+      console.log('👆 Short press detected - toggle listening');
+      handleToggleListening();
+    }
+    
+    setIsLongPress(false);
+  }, [isLongPress, hasCredentials, handleToggleListening]);
+
+  const handleMouseLeave = useCallback(() => {
+    if (pressTimer.current) {
+      clearTimeout(pressTimer.current);
+      pressTimer.current = null;
+    }
+    setIsLongPress(false);
+  }, []);
 
   // Handle keyboard shortcut (Ctrl+Shift+V)
   useEffect(() => {
@@ -278,51 +323,79 @@ export function VoiceAssistantFloating({ onTaskCreated, onEventCreated, onRefres
       return () => clearTimeout(timer);
     }
   }, [isListening, transcript, isProcessing, hasProcessedCommand, userStoppedManually, processVoiceCommand]);
-
   // Reset processed command flag when dialog closes
   useEffect(() => {
     if (!showDialog) {
       setHasProcessedCommand(false);
       setUserStoppedManually(false);
       setHasAutoStarted(false);
+      setShowModalButton(false);
       resetTranscript();
     }
   }, [showDialog, resetTranscript]);
 
+  // Esconder botão modal após um tempo
+  useEffect(() => {
+    if (showModalButton && !isListening && !isProcessing) {
+      const timer = setTimeout(() => {
+        setShowModalButton(false);
+      }, 8000); // 8 segundos
+      return () => clearTimeout(timer);
+    }
+  }, [showModalButton, isListening, isProcessing]);
   if (!isSupported) {
     return null; // Don't show anything if not supported
   }
 
+  const getButtonIcon = () => {
+    if (isProcessing) {
+      return <Loader2 className="h-6 w-6 animate-spin" />;
+    }
+    
+    if (isListening) {
+      return <MicOff className="h-6 w-6" />;
+    }
+    
+    return <Mic className="h-6 w-6" />;
+  };
+
   return (
-    <Dialog open={showDialog} onOpenChange={setShowDialog}>
-      <DialogTrigger asChild>
+    <div className="fixed bottom-6 right-6 flex flex-col items-end space-y-2 z-50">
+      {/* Botão para abrir modal - aparece após gravação */}
+      {showModalButton && (
         <Button
-          size="lg"
-          className={cn(
-            "rounded-full w-14 h-14 shadow-lg hover:shadow-xl transition-all duration-200",
-            !hasCredentials && "opacity-50",
-            isListening && "animate-pulse bg-red-500 hover:bg-red-600",
-            isProcessing && "animate-spin"
-          )}
-          disabled={!hasCredentials}
-          onClick={(e) => {
-            if (!hasCredentials) {
-              e.preventDefault();
-              toast.error('Configure o assistente de voz nas Configurações primeiro');
-              return;
-            }
-            setShowDialog(true);
-          }}
+          size="sm"
+          variant="secondary"
+          className="rounded-full shadow-lg animate-in fade-in-0 slide-in-from-bottom-2 duration-300"
+          onClick={() => setShowDialog(true)}
         >
-          {isListening ? (
-            <MicOff className="h-6 w-6" />
-          ) : isProcessing ? (
-            <Volume2 className="h-6 w-6" />
-          ) : (
-            <Mic className="h-6 w-6" />
-          )}
+          <MessageSquare className="h-4 w-4 mr-2" />
+          Ver Detalhes
         </Button>
-      </DialogTrigger>
+      )}
+
+      {/* Botão principal de gravação */}
+      <Button
+        size="lg"
+        variant="outline"
+        className={cn(
+          "rounded-full shadow-lg hover:shadow-xl transition-all duration-200",
+          !hasCredentials && "opacity-50",
+          isListening && "animate-pulse bg-red-500 hover:bg-red-600 text-white border-red-500",
+          isProcessing && "bg-blue-500 hover:bg-blue-600 text-white border-blue-500"
+        )}
+        disabled={!hasCredentials}
+        onMouseDown={handleMouseDown}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseLeave}
+        onTouchStart={handleMouseDown}
+        onTouchEnd={handleMouseUp}
+      >
+        {getButtonIcon()}
+      </Button>
+
+      {/* Modal Dialog */}
+      <Dialog open={showDialog} onOpenChange={setShowDialog}>
       
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
@@ -338,13 +411,14 @@ export function VoiceAssistantFloating({ onTaskCreated, onEventCreated, onRefres
             </Link>
           </DialogTitle>          <DialogDescription>
             Fale naturalmente para criar tarefas e eventos. O processamento acontece automaticamente quando você parar de falar.
-            <br />
-            <span className="text-xs">Atalho: Ctrl+Shift+V</span>
+            <br />            <span className="text-xs">Atalho: Ctrl+Shift+V | Segurar botão: Abrir modal</span>
           </DialogDescription>
         </DialogHeader>
         
-        <div className="space-y-4">          {/* Status and Controls */}
-          <div className="flex items-center justify-between">            <Badge
+        <div className="space-y-4">
+          {/* Status and Controls */}
+          <div className="flex items-center justify-between">
+            <Badge
               variant={
                 isListening ? 'default' : 
                 isProcessing ? 'secondary' : 
@@ -400,7 +474,9 @@ export function VoiceAssistantFloating({ onTaskCreated, onEventCreated, onRefres
                 </Button>
               )}
             </div>
-          </div>{/* Transcript Display */}
+          </div>
+
+          {/* Transcript Display */}
           {(transcript || interimTranscript) && (
             <div className="min-h-[80px] p-3 bg-muted rounded-lg">
               <p className="text-sm">
@@ -441,7 +517,13 @@ export function VoiceAssistantFloating({ onTaskCreated, onEventCreated, onRefres
 
           {/* Usage Tips */}
           <div className="text-xs text-muted-foreground space-y-1">
-            <p><strong>Exemplos de comandos:</strong></p>
+            <p><strong>Como usar:</strong></p>
+            <ul className="list-disc list-inside space-y-0.5 ml-2">
+              <li><strong>Clique rápido:</strong> Iniciar/parar gravação</li>
+              <li><strong>Segurar botão:</strong> Abrir este modal</li>
+              <li><strong>Ctrl+Shift+V:</strong> Atalho de teclado</li>
+            </ul>
+            <p className="mt-2"><strong>Exemplos de comandos:</strong></p>
             <ul className="list-disc list-inside space-y-0.5 ml-2">
               <li>&quot;Criar reunião amanhã às 14h&quot;</li>
               <li>&quot;Adicionar tarefa comprar leite para hoje&quot;</li>
@@ -451,5 +533,6 @@ export function VoiceAssistantFloating({ onTaskCreated, onEventCreated, onRefres
         </div>
       </DialogContent>
     </Dialog>
+    </div>
   );
 }

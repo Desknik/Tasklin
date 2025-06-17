@@ -1,0 +1,206 @@
+{
+  "name": "FocusBoard Voice Assistant",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "voice-agent",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Voice Command Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "webhookId": "voice-agent"
+    },
+    {
+      "parameters": {
+        "model": "gpt-3.5-turbo",
+        "messages": {
+          "messageType": "define",
+          "values": [
+            {
+              "role": "system",
+              "content": "Você é um assistente de produtividade que processa comandos de voz para criar tarefas e eventos de calendário.\n\nAnalise o comando do usuário e determine:\n1. Se é para criar uma TAREFA (task) ou EVENTO (event)\n2. Extraia informações relevantes (título, data, hora, descrição, prioridade)\n\nREGRAS:\n- Para EVENTOS: você deve criar diretamente via Google Calendar API e retornar status \"success\"\n- Para TAREFAS: retorne os dados estruturados com status \"pending\" para o app processar\n- Para comandos não reconhecidos: retorne status \"error\"\n\nFORMATO DE RESPOSTA (JSON):\n\nPara evento criado automaticamente:\n{\n  \"status\": \"success\",\n  \"type\": \"event\", \n  \"action\": \"created\",\n  \"message\": \"Evento 'Reunião' criado para 17/06 às 15h\",\n  \"data\": {\n    \"id\": \"event123\",\n    \"summary\": \"Reunião\",\n    \"start\": \"2025-06-17T15:00:00-03:00\",\n    \"end\": \"2025-06-17T16:00:00-03:00\"\n  }\n}\n\nPara tarefa a ser criada pelo app:\n{\n  \"status\": \"pending\",\n  \"type\": \"task\",\n  \"action\": \"create\", \n  \"message\": \"Tarefa processada e pronta para criar\",\n  \"data\": {\n    \"title\": \"Comprar leite\",\n    \"description\": \"\",\n    \"dueDate\": \"2025-06-18T18:00:00-03:00\",\n    \"priority\": \"medium\"\n  }\n}\n\nPara erro:\n{\n  \"status\": \"error\",\n  \"type\": \"unknown\",\n  \"message\": \"Não consegui entender o comando. Tente novamente.\"\n}"
+            },
+            {
+              "role": "user", 
+              "content": "=COMANDO DO USUÁRIO: {{ $json.text }}\nDATA/HORA ATUAL: {{ $json.timestamp }}"
+            }
+          ]
+        },
+        "options": {
+          "temperature": 0.3,
+          "maxTokens": 500
+        }
+      },
+      "id": "openai-processor",
+      "name": "Process Voice Command",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1,
+      "position": [460, 300],
+      "credentials": {
+        "openAiApi": {
+          "id": "openai-credentials",
+          "name": "OpenAI"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse the OpenAI response\nconst aiResponse = JSON.parse($input.first().json.message.content);\n\n// Pass through the structured response\nreturn [aiResponse];"
+      },
+      "id": "parse-response",
+      "name": "Parse AI Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.type }}",
+              "operation": "equal",
+              "value2": "event"
+            }
+          ]
+        }
+      },
+      "id": "check-type",
+      "name": "Is Event?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "calendarId": "primary",
+        "start": "={{ $json.data.start }}",
+        "end": "={{ $json.data.end }}",
+        "summary": "={{ $json.data.title || $json.data.summary }}",
+        "description": "={{ $json.data.description }}"
+      },
+      "id": "create-calendar-event",
+      "name": "Create Google Calendar Event",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1,
+      "position": [1120, 180],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "google-calendar-credentials",
+          "name": "Google Calendar"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format success response for created event\nconst calendarEvent = $input.all()[0].json;\nconst originalData = $input.all()[1].json;\n\nreturn [{\n  status: \"success\",\n  type: \"event\",\n  action: \"created\",\n  message: `Evento '${calendarEvent.summary}' criado com sucesso`,\n  data: {\n    id: calendarEvent.id,\n    summary: calendarEvent.summary,\n    start: calendarEvent.start.dateTime || calendarEvent.start.date,\n    end: calendarEvent.end.dateTime || calendarEvent.end.date\n  }\n}];"
+      },
+      "id": "format-event-response",
+      "name": "Format Event Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [1340, 180]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}"
+      },
+      "id": "webhook-response",
+      "name": "Send Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1560, 300]
+    }
+  ],
+  "connections": {
+    "Voice Command Webhook": {
+      "main": [
+        [
+          {
+            "node": "Process Voice Command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Voice Command": {
+      "main": [
+        [
+          {
+            "node": "Parse AI Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse AI Response": {
+      "main": [
+        [
+          {
+            "node": "Is Event?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Event?": {
+      "main": [
+        [
+          {
+            "node": "Create Google Calendar Event",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Google Calendar Event": {
+      "main": [
+        [
+          {
+            "node": "Format Event Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Event Response": {
+      "main": [
+        [
+          {
+            "node": "Send Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2025-06-16T12:00:00.000Z",
+  "versionId": "1"
+}

@@ -12,7 +12,7 @@ import { format, isToday, isThisWeek, isPast } from 'date-fns';
 import { cn } from '@/lib/utils';
 
 interface KanbanBoardProps {
-  onCreateTask?: () => void;
+  onCreateTask?: (date?: Date) => void;
 }
 
 interface KanbanColumn {
@@ -193,7 +193,7 @@ export function KanbanBoard({ onCreateTask }: KanbanBoardProps) {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold">Quadro de Tarefas</h2>
-        <Button onClick={onCreateTask} className="flex items-center space-x-2">
+        <Button onClick={() => onCreateTask?.()} className="flex items-center space-x-2">
           <Plus className="h-4 w-4" />
           <span>Adicionar Tarefa</span>
         </Button>

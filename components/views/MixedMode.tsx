@@ -7,8 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 
 interface MixedModeProps {
-  onCreateTask?: () => void;
-  onCreateEvent?: () => void;
+  onCreateTask?: (date?: Date) => void;
+  onCreateEvent?: (date?: Date) => void;
 }
 
 export function MixedMode({ onCreateTask, onCreateEvent }: MixedModeProps) {

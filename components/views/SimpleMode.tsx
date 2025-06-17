@@ -13,8 +13,8 @@ import { googleCalendarAPI } from '@/lib/google-api';
 import { cn } from '@/lib/utils';
 
 interface SimpleModeProps {
-  onCreateTask?: () => void;
-  onCreateEvent?: () => void;
+  onCreateTask?: (date?: Date) => void;
+  onCreateEvent?: (date?: Date) => void;
 }
 
 export function SimpleMode({ onCreateTask, onCreateEvent }: SimpleModeProps) {

@@ -11,6 +11,7 @@ import { MixedMode } from '@/components/views/MixedMode';
 import { TaskForm } from '@/components/forms/TaskForm';
 import { EventForm } from '@/components/forms/EventForm';
 import { NotificationAlerts } from '@/components/notifications/NotificationAlert';
+import { VoiceAssistantFloating } from '@/components/voice/VoiceAssistantFloating';
 import { AlertTriangle, Settings } from 'lucide-react';
 import { Task, CalendarEvent } from '@/types/calendar';
 import { googleCalendarAPI } from '@/lib/google-api';
@@ -24,6 +25,7 @@ export default function HomePage() {
   const [editingTask, setEditingTask] = useState<Task | undefined>();
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | undefined>();
   const [hasCredentials, setHasCredentials] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     const checkCredentials = () => {
@@ -114,6 +116,22 @@ export default function HomePage() {
     setEditingEvent(undefined);
   };
 
+  const handleRefreshData = () => {
+    setRefreshKey(prev => prev + 1);
+    // Trigger storage event to refresh all components
+    window.dispatchEvent(new Event('storage'));
+  };
+
+  const handleTaskCreated = (task: Task) => {
+    // Force refresh of all views
+    handleRefreshData();
+  };
+
+  const handleEventCreated = (event: CalendarEvent) => {
+    // Force refresh of all views
+    handleRefreshData();
+  };
+
   return (
     <div className="container mx-auto px-4 py-8">
       {/* Alertas de notificação no topo */}
@@ -139,6 +157,15 @@ export default function HomePage() {
           </Alert>
         )}
 
+        {/* Voice Assistant - Fixed Position */}
+        <div className="fixed bottom-4 right-4 z-50">
+          <VoiceAssistantFloating
+            onTaskCreated={handleTaskCreated}
+            onEventCreated={handleEventCreated}
+            onRefreshData={handleRefreshData}
+          />
+        </div>
+
         {/* Conteúdo principal com abas de modo de visualização */}
         <Tabs value={viewMode} onValueChange={handleViewModeChange}>
           <div className="flex items-center justify-between mb-8">
@@ -151,6 +178,7 @@ export default function HomePage() {
 
           <TabsContent value="simple" className="space-y-6 mt-0">
             <SimpleMode 
+              key={`simple-${refreshKey}`}
               onCreateTask={handleCreateTask}
               onCreateEvent={handleCreateEvent}
             />
@@ -158,6 +186,7 @@ export default function HomePage() {
 
           <TabsContent value="agenda" className="space-y-6 mt-0">
             <AgendaMode 
+              key={`agenda-${refreshKey}`}
               onCreateTask={handleCreateTask}
               onCreateEvent={handleCreateEvent}
             />
@@ -165,6 +194,7 @@ export default function HomePage() {
 
           <TabsContent value="mixed" className="space-y-6 mt-0">
             <MixedMode 
+              key={`mixed-${refreshKey}`}
               onCreateTask={handleCreateTask}
               onCreateEvent={handleCreateEvent}
             />

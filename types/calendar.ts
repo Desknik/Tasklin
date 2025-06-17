@@ -46,3 +46,31 @@ export interface NotificationAlert {
   dueDate: Date;
   dismissed: boolean;
 }
+
+// Voice Assistant Types
+export interface VoiceAgentCredentials {
+  endpointUrl: string;
+  authToken?: string;
+}
+
+export interface VoiceAgentRequest {
+  text: string;
+  timestamp: string;
+}
+
+export interface VoiceAgentResponse {
+  status: 'success' | 'pending' | 'error';
+  type: 'event' | 'task' | 'unknown';
+  action?: 'created' | 'create';
+  message: string;
+  data?: {
+    id?: string;
+    title?: string;
+    summary?: string;
+    description?: string;
+    start?: string;
+    end?: string;
+    dueDate?: string;
+    priority?: 'low' | 'medium' | 'high';
+  };
+}

@@ -28,6 +28,14 @@ Um aplicativo de calendário e gerenciamento de tarefas auto-hospedado projetado
 - Sistema de dispensa manual
 - Notificações toast não intrusivas
 
+### 🎤 Assistente de Voz
+- Reconhecimento de voz com Web Speech API
+- Integração com agentes de IA (n8n + LLM)
+- Criação automática de eventos via Google Calendar
+- Processamento local de tarefas
+- Atalho de teclado (Ctrl+Shift+V)
+- Suporte a comandos em português brasileiro
+
 ### 📋 Gerenciamento de Tarefas
 - Criar, editar e excluir tarefas
 - Níveis de prioridade e tags

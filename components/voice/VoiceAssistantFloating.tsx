@@ -10,6 +10,7 @@ import { VoiceAgentRequest, VoiceAgentResponse, VoiceAgentCredentials, Task, Cal
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { localStorage } from '@/lib/storage';
+import { handleAIResponse } from '@/lib/voice-response-handler';
 import Link from 'next/link';
 
 interface VoiceAssistantFloatingProps {
@@ -91,97 +92,35 @@ export function VoiceAssistantFloating({ onTaskCreated, onEventCreated, onRefres
         body: JSON.stringify(request),
       });
 
-      console.log('📨 Response recebido do n8n:', response.status, response.statusText);
-
-      if (!response.ok) {
+      console.log('📨 Response recebido do n8n:', response.status, response.statusText);      if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
-      const result: VoiceAgentResponse = await response.json();
-      console.log('📋 Result parsed do n8n:', result);
+      const responseData = await response.json();
+      console.log('📋 Full response from n8n:', responseData);
+      
+      // Extract the actual response from the wrapper
+      const result: VoiceAgentResponse = responseData.response || responseData;
+      console.log('📋 Extracted result:', result);
 
-      // Show persistent notification using Sonner
-      if (result.status === 'success') {
-        if (result.type === 'event' && result.action === 'created') {
-          // Event was created by the agent
-          toast.success(result.message, {
-            duration: 10000,
+      // Use the new AI response handler
+      handleAIResponse(result, {
+        onTaskCreated,
+        onEventCreated,
+        onRefreshData,
+        onNeedsInfo: (meta) => {
+          console.log('📝 Needs more info:', meta);
+          // TODO: Implement modal or form to collect missing information
+          // For now, just show the info in console
+          toast.info(`Preciso de mais informações: ${meta.missing.join(', ')}`, {
+            duration: 8000,
             action: {
-              label: 'Fechar',
-              onClick: () => {},
-            },
-          });
-          
-          onRefreshData?.();
-          
-        } else if (result.type === 'task' && result.action === 'create' && result.data) {
-          // Create task locally
-          const taskData = {
-            id: crypto.randomUUID(),
-            title: result.data.title || '',
-            description: result.data.description || '',
-            dueDate: result.data.dueDate ? new Date(result.data.dueDate) : undefined,
-            priority: result.data.priority || 'medium',
-            completed: false,
-            status: 'pending' as const,
-            tags: [],
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          };
-
-          const newTask = localStorage.addTask(taskData);
-          onTaskCreated?.(newTask);
-          
-          toast.success(result.message, {
-            duration: 10000,
-            action: {
-              label: 'Fechar',
+              label: 'OK',
               onClick: () => {},
             },
           });
         }
-      } else if (result.status === 'pending' && result.type === 'task' && result.data) {
-        // Task data parsed, create locally
-        const taskData = {
-          id: crypto.randomUUID(),
-          title: result.data.title || '',
-          description: result.data.description || '',
-          dueDate: result.data.dueDate ? new Date(result.data.dueDate) : undefined,
-          priority: result.data.priority || 'medium',
-          completed: false,
-          status: 'pending' as const,
-          tags: [],
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        };
-
-        const newTask = localStorage.addTask(taskData);
-        onTaskCreated?.(newTask);
-        
-        toast.success(`Tarefa criada: ${taskData.title}`, {
-          duration: 8000,
-          action: {
-            label: 'Fechar',
-            onClick: () => {},
-          },
-        });
-      } else if (result.status === 'error') {
-        toast.error(result.message, {
-          duration: 8000,
-          action: {
-            label: 'Tentar Novamente',
-            onClick: () => processVoiceCommand(text),
-          },
-        });
-      } else {
-        toast.info(result.message, {
-          duration: 6000,
-          action: {
-            label: 'Fechar',
-            onClick: () => {},
-          },
-        });
-      }    } catch (error) {
+      });} catch (error) {
       console.error('❌ Voice command processing error:', error);
       toast.error('Erro ao processar comando de voz. Tente novamente.', {
         duration: 6000,
@@ -196,7 +135,7 @@ export function VoiceAssistantFloating({ onTaskCreated, onEventCreated, onRefres
       // Esconder o botão modal após processar
       setShowModalButton(false);
     }
-  }, [onTaskCreated, onRefreshData, resetTranscript]);
+  }, [onTaskCreated, onEventCreated, onRefreshData, resetTranscript]);
 
   const handleStartListening = useCallback(() => {
     if (!isSupported) {

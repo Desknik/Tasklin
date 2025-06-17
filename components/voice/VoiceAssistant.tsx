@@ -10,6 +10,7 @@ import { VoiceAgentRequest, VoiceAgentResponse, VoiceAgentCredentials, Task, Cal
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { localStorage } from '@/lib/storage';
+import { handleAIResponse } from '@/lib/voice-response-handler';
 import { googleCalendarAPI } from '@/lib/google-api';
 import Link from 'next/link';
 
@@ -65,99 +66,40 @@ export function VoiceAssistant({ onTaskCreated, onEventCreated, onRefreshData }:
 
       if (credentials.authToken) {
         headers['Authorization'] = `Bearer ${credentials.authToken}`;
-      }
-
-      const response = await fetch(credentials.endpointUrl, {
+      }      const response = await fetch(credentials.endpointUrl, {
         method: 'POST',
         headers,
         body: JSON.stringify(request),
       });
 
-      const result: VoiceAgentResponse = await response.json();
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
 
-      // Show persistent notification using Sonner
-      if (result.status === 'success') {
-        if (result.type === 'event' && result.action === 'created') {
-          // Event was created by the agent
-          toast.success(result.message, {
-            duration: 10000, // 10 seconds
-            action: {
-              label: 'Fechar',
-              onClick: () => {},
-            },
-          });
-          
-          // Refresh calendar data
-          onRefreshData?.();
-          
-        } else if (result.type === 'task' && result.action === 'create' && result.data) {
-          // Create task locally
-          const taskData = {
-            id: crypto.randomUUID(),
-            title: result.data.title || '',
-            description: result.data.description || '',
-            dueDate: result.data.dueDate ? new Date(result.data.dueDate) : undefined,
-            priority: result.data.priority || 'medium',
-            completed: false,
-            status: 'pending' as const,
-            tags: [],
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          };
+      const responseData = await response.json();
+      console.log('📋 Full response from n8n:', responseData);
+      
+      // Extract the actual response from the wrapper
+      const result: VoiceAgentResponse = responseData.response || responseData;
+      console.log('📋 Extracted result:', result);
 
-          const newTask = localStorage.addTask(taskData);
-          onTaskCreated?.(newTask);
-          
-          toast.success(result.message, {
-            duration: 10000,
+      // Use the new AI response handler
+      handleAIResponse(result, {
+        onTaskCreated,
+        onEventCreated,
+        onRefreshData,
+        onNeedsInfo: (meta) => {
+          console.log('📝 Needs more info:', meta);
+          // TODO: Implement modal or form to collect missing information
+          toast.info(`Preciso de mais informações: ${meta.missing.join(', ')}`, {
+            duration: 8000,
             action: {
-              label: 'Fechar',
+              label: 'OK',
               onClick: () => {},
             },
           });
         }
-      } else if (result.status === 'pending' && result.type === 'task' && result.data) {
-        // Task data parsed, create locally
-        const taskData = {
-          id: crypto.randomUUID(),
-          title: result.data.title || '',
-          description: result.data.description || '',
-          dueDate: result.data.dueDate ? new Date(result.data.dueDate) : undefined,
-          priority: result.data.priority || 'medium',
-          completed: false,
-          status: 'pending' as const,
-          tags: [],
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        };
-
-        const newTask = localStorage.addTask(taskData);
-        onTaskCreated?.(newTask);
-        
-        toast.success(`Tarefa criada: ${taskData.title}`, {
-          duration: 8000,
-          action: {
-            label: 'Fechar',
-            onClick: () => {},
-          },
-        });
-      } else if (result.status === 'error') {
-        toast.error(result.message, {
-          duration: 8000,
-          action: {
-            label: 'Tentar Novamente',
-            onClick: () => processVoiceCommand(text),
-          },
-        });
-      } else {
-        toast.info(result.message, {
-          duration: 6000,
-          action: {
-            label: 'Fechar',
-            onClick: () => {},
-          },
-        });
-      }
+      });
 
     } catch (error) {
       console.error('Voice command processing error:', error);
@@ -171,7 +113,7 @@ export function VoiceAssistant({ onTaskCreated, onEventCreated, onRefreshData }:
       setIsProcessing(false);
       resetTranscript();
     }
-  }, [onTaskCreated, onRefreshData, resetTranscript]);
+  }, [onTaskCreated, onEventCreated, onRefreshData, resetTranscript]);
 
   const handleStartListening = useCallback(() => {
     if (!isSupported) {

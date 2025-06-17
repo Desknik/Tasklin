@@ -59,9 +59,9 @@ export interface VoiceAgentRequest {
 }
 
 export interface VoiceAgentResponse {
-  status: 'success' | 'pending' | 'error';
+  status: 'success' | 'pending' | 'error' | 'needs_info';
   type: 'event' | 'task' | 'unknown';
-  action?: 'created' | 'create';
+  action?: 'created' | 'create' | 'none';
   message: string;
   data?: {
     id?: string;
@@ -72,5 +72,10 @@ export interface VoiceAgentResponse {
     end?: string;
     dueDate?: string;
     priority?: 'low' | 'medium' | 'high';
+  };
+  meta?: {
+    missing?: string[];
+    originalInput?: string;
+    timestamp?: string;
   };
 }
